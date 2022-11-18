@@ -150,10 +150,17 @@ def create_transaction(*, transaction_in: Transaction) -> dict:
     TRANSACTIONS.append(transaction_entry.dict())
 
     # Construct Rental Agreement
+    tool_found = False
     for tool in TOOLS:
         if tool["code"] == transaction_in.tool_code:
             tool_type = tool["type"]
             tool_brand = tool["brand"]
+            tool_found = True
+
+    if not tool_found:
+        raise HTTPException(
+            status_code=422, detail=f"Tool with code {transaction_in.tool_code} not found"
+        )
 
     due_date_datetime = checkout_datetime + timedelta(days=transaction_in.rental_day_count)
     due_date = due_date_datetime.strftime("%m/%d/%y")
