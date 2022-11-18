@@ -99,7 +99,7 @@ def create_tool(*, tool_in: Tool) -> dict:
 
     return tool_entry
 
-@app.put("/price/{tool_type}", status_code=200, response_model=Price)
+@app.put("/price/{tool_type}", status_code=200)
 def update_price(*, tool_type: str, price_in: Price) -> dict:
     """
     Update an existing Price (in memory only)
