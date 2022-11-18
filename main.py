@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from schemas import Tool, Price, Transaction
+from schemas import Tool, Price, Transaction, RentalAgreement
+from datetime import datetime, timedelta
 
 TOOLS = [
     {
@@ -118,7 +119,7 @@ def update_price(*, tool_type: str, price_in: Price) -> dict:
         )
     return
 
-@app.post("/transaction/", status_code=201, response_model=Transaction)
+@app.post("/transaction/", status_code=201, response_model=RentalAgreement)
 def create_transaction(*, transaction_in: Transaction) -> dict:
     """
     Create a new transaction (in memory only)
@@ -128,9 +129,16 @@ def create_transaction(*, transaction_in: Transaction) -> dict:
             status_code=422, detail=f"Rental day count must be an integer greater than zero"
         )
 
-    if (transaction_in.discount_percent < -1) or (transaction_in.discount_percent > 100):
+    if (transaction_in.discount_percent < 0) or (transaction_in.discount_percent > 100):
         raise HTTPException(
             status_code=422, detail=f"Transaction percent must be in range 0-100"
+        )
+
+    try: 
+        checkout_datetime = datetime.strptime(transaction_in.checkout_date, "%m/%d/%y")
+    except:
+        raise HTTPException(
+            status_code=422, detail=f"Checkout date must be in format MM/DD/YY"
         )
     
     transaction_entry = Transaction(
@@ -141,5 +149,80 @@ def create_transaction(*, transaction_in: Transaction) -> dict:
     )
     TRANSACTIONS.append(transaction_entry.dict())
 
-    return transaction_entry
-    
+    # Construct Rental Agreement
+    for tool in TOOLS:
+        if tool["code"] == transaction_in.tool_code:
+            tool_type = tool["type"]
+            tool_brand = tool["brand"]
+
+    due_date_datetime = checkout_datetime + timedelta(days=transaction_in.rental_day_count)
+    due_date = due_date_datetime.strftime("%m/%d/%y")
+    for price in PRICES:
+        if price["type"] == tool_type:
+            daily_rental_charge = price["daily_rental_charge"]
+            weekday_charge = price["weekday_charge"]
+            weekend_charge = price["weekend_charge"]
+            holiday_charge = price["holiday_charge"]
+
+    datetimes_in_range = []
+    for i in range(1, transaction_in.rental_day_count + 1):
+        datetimes_in_range.append(checkout_datetime + timedelta(days=i))
+
+    chargeable_days = [False] * transaction_in.rental_day_count
+    for idx, date in enumerate(datetimes_in_range):
+        # Calculate holidays charged
+        ## Labor Day
+        if holiday_charge and (date.month == 9) and (date.day < 7) and (date.weekday() == 0):
+            chargeable_days[idx] = True
+            continue
+        elif not holiday_charge and ((date.month == 9) and (date.day < 7) and (date.weekday() == 0)):
+            chargeable_days[idx] = False
+            continue
+
+        ## July 4th
+        if (date.month == 7):
+            fourth_of_july_datetime = datetime(date.year, 7, 4)
+            if fourth_of_july_datetime.weekday() == 5: # Falls on a Saturday this year
+                fourth_of_july_observed = datetime(date.year, 7, 3)
+            elif fourth_of_july_datetime.weekday() == 6: # Falls on a Sunday this year
+                fourth_of_july_observed = datetime(date.year, 7, 5)
+            else: # Fourth of July is during the week
+                fourth_of_july_observed = fourth_of_july_datetime
+            
+            if (fourth_of_july_observed.day == date.day) and holiday_charge:
+                chargeable_days[idx] = True
+                continue
+            elif (fourth_of_july_observed.day == date.day) and not holiday_charge:
+                chargeable_days[idx] = False
+                continue
+
+        # Calculate weekdays charged
+        if (date.weekday() < 5) and (weekday_charge):
+            chargeable_days[idx] = True
+
+        # Calculate weekends charged
+        if (date.weekday() > 4) and (weekend_charge):
+            chargeable_days[idx] = True
+
+    charge_days = chargeable_days.count(True)
+    pre_discount_charge = round(charge_days * daily_rental_charge, 2)
+    discount_amount = round((transaction_in.discount_percent / 100) * pre_discount_charge, 2)
+    final_charge = pre_discount_charge - discount_amount
+
+    rental_agreement = RentalAgreement(
+        tool_code=transaction_in.tool_code,
+        tool_type=tool_type,
+        tool_brand=tool_brand,
+        rental_day_count=transaction_in.rental_day_count,
+        checkout_date=transaction_in.checkout_date,
+        due_date=due_date,
+        daily_rental_charge='${:,.2f}'.format(daily_rental_charge),
+        charge_days=charge_days,
+        pre_discount_charge='${:,.2f}'.format(pre_discount_charge),
+        discount_percent=f'{transaction_in.discount_percent}%',
+        discount_amount='${:,.2f}'.format(discount_amount),
+        final_charge='${:,.2f}'.format(final_charge),
+    )
+
+    return rental_agreement
+
