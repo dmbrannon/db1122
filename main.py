@@ -73,7 +73,7 @@ def fetch_tool(*, tool_code: str) -> dict:
     return result[0]
 
 @app.get("/price/{tool_type}", status_code=200)
-def fetch_tool(*, tool_type: str) -> dict:
+def fetch_price(*, tool_type: str) -> dict:
     """
     Fetch a single price by its type
     """
