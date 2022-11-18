@@ -172,10 +172,10 @@ def create_transaction(*, transaction_in: Transaction) -> dict:
     for idx, date in enumerate(datetimes_in_range):
         # Calculate holidays charged
         ## Labor Day
-        if holiday_charge and (date.month == 9) and (date.day < 7) and (date.weekday() == 0):
+        if holiday_charge and (date.month == 9) and (date.day < 8) and (date.weekday() == 0):
             chargeable_days[idx] = True
             continue
-        elif not holiday_charge and ((date.month == 9) and (date.day < 7) and (date.weekday() == 0)):
+        elif not holiday_charge and ((date.month == 9) and (date.day < 8) and (date.weekday() == 0)):
             chargeable_days[idx] = False
             continue
 
